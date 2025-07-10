@@ -1,0 +1,55 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    # 1) Install XcodeGen if needed, then generate the Xcode project
+    - name: Maybe install XcodeGen
+      run: brew install xcodegen || true
+
+    - name: Generate Xcode project
+      run: xcodegen generate || true
+
+    # 2) Archive the app into an .xcarchive
+    - name: Archive .xcarchive
+      run: |
+        xcodebuild \
+          -project bitchat.xcodeproj \
+          -scheme bitchat \
+          -configuration Release \
+          -archivePath $PWD/build/bitchat.xcarchive \
+          archive
+
+    # 3) Export an unsigned IPA for sideloading
+    - name: Export IPA
+      run: |
+        cat > ExportOptions.plist <<EOF
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+          "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>ad-hoc</string>
+          </dict>
+        </plist>
+        EOF
+
+        xcodebuild \
+          -exportArchive \
+          -archivePath $PWD/build/bitchat.xcarchive \
+          -exportOptionsPlist ExportOptions.plist \
+          -exportPath $PWD/build
+
+    # 4) Upload the IPA as an artifact
+    - uses: actions/upload-artifact@v3
+      with:
+        name: bitchat.ipa
+        path: build/*.ipa
